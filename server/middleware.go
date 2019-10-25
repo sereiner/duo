@@ -1,15 +1,16 @@
-package engine
+package server
 
 import (
 	"context"
+	"net"
+	"runtime/debug"
+	"time"
+
 	logger "github.com/sereiner/library/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
-	"net"
-	"runtime/debug"
-	"time"
 )
 
 func LoggingInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
