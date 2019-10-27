@@ -1,10 +1,12 @@
 package server
 
 import (
+	"github.com/sereiner/duo/conf"
 	"net"
 	"time"
 
 	logger "github.com/sereiner/library/log"
+	xnet "github.com/sereiner/library/net"
 	"google.golang.org/grpc/reflection"
 
 	"google.golang.org/grpc"
@@ -22,15 +24,14 @@ type ServerEngine struct {
 	ServiceFunc func(server *grpc.Server)
 	running     string
 	proto       string
-	port        string
 	addr        string
 	host        string
 }
 
-func NewServiceEngine(name, address string, opts ...Option) *ServerEngine {
+func NewServiceEngine(name string, conf conf.ISystemConf, opts ...Option) *ServerEngine {
 	s := &ServerEngine{
 		option: &option{},
-		addr:   address,
+		addr:   conf.GetAddr(),
 	}
 
 	for _, opt := range opts {
@@ -67,8 +68,10 @@ func (s *ServerEngine) Run() error {
 	}(errChan)
 	select {
 	case <-time.After(time.Millisecond * 500):
+		s.Debugf("服务启动成功 listen at tcp://%s%s", xnet.GetLocalIPAddress(), s.addr)
 		return nil
 	case err := <-errChan:
+		s.Errorf("服务启动失败 %v", err)
 		s.running = StStop
 		return err
 	}
@@ -78,9 +81,8 @@ func (s *ServerEngine) Run() error {
 func (s *ServerEngine) Shutdown(timeout time.Duration) {
 	if s.engine != nil {
 		s.running = StStop
-		s.engine.GracefulStop()
+		s.engine.Stop()
 		time.Sleep(time.Second)
-
 	}
 }
 

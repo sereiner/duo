@@ -1,6 +1,7 @@
 package duo
 
 import (
+	"github.com/sereiner/duo/conf"
 	"os"
 
 	"github.com/sereiner/duo/component"
@@ -41,11 +42,13 @@ func (m *MicroApp) Start() {
 
 	defer logger.Close()
 
-	if m.IsDebug {
+	serverConf := conf.NewServerConf(m.ConfPath)
+
+	if serverConf.IsDebug() {
 		m.PlatName += "_debug"
 	}
 
-	m.duo = NewDuo(m.Name, m.logger, m.IsDebug, m.PlatName, m.SystemName, m.ClusterName, m.Trace)
+	m.duo = NewDuo(m.Name, m.logger, m.PlatName, m.SystemName, m.ClusterName, m.Trace, serverConf)
 
 	s, err := m.duo.Start(m.GetServices())
 	if err != nil {

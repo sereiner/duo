@@ -10,14 +10,21 @@ import (
 	"github.com/sereiner/duo/example/rpc"
 )
 
+type App struct {
+	*duo.MicroApp
+}
+
 func main() {
-	app := duo.NewMicroApp(
+
+	app := &App{duo.NewMicroApp(
 		duo.WithName("app"),
 		duo.WithSystemName("rpc"),
-		duo.WithPlatName("rpc"))
+		duo.WithPlatName("rpc"),
+	)}
 	app.Initializing(func(s *grpc.Server) {
 		rpc.RegisterSearchServiceServer(s, NewServer())
 	})
+	app.Install()
 
 	app.Start()
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/openzipkin/zipkin-go"
 	zipkinhttp "github.com/openzipkin/zipkin-go/reporter/http"
 	"github.com/sereiner/duo/example/rpc"
-
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"log"
@@ -36,7 +35,7 @@ func main() {
 	// optionally set as Global OpenTracing tracer instance
 	opentracing.SetGlobalTracer(tracer)
 
-	conn, err := grpc.DialContext(context.Background(), "127.0.0.1:8090", grpc.WithInsecure(), grpc.WithUnaryInterceptor(
+	conn, err := grpc.DialContext(context.Background(), "127.0.0.1:9090", grpc.WithInsecure(), grpc.WithUnaryInterceptor(
 		otgrpc.OpenTracingClientInterceptor(tracer, otgrpc.LogPayloads()),
 	))
 	if err != nil {
@@ -50,4 +49,5 @@ func main() {
 		fmt.Printf(" Reply is %s\n", resp.Response)
 	}
 
+	fmt.Println(resp)
 }

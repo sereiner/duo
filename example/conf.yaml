@@ -1,0 +1,35 @@
+app:
+  port: :9090
+  env: local
+  key: base64:X2HTFXYXez3RwZ5plFA220P8HrFtXtflp+8o6Lx1X5E=
+  host: http://www.shiqc_papershop.com
+
+db:
+  provider:   mysql
+  conn_string: wule:Wule!#%&@tcp(rm-2ze2ul50180u6lt37rw.mysql.rds.aliyuncs.com:3306)/receipt?charset=utf8mb4&parseTime=True&loc=PRC
+  max_open:    20
+  max_idle:    10
+  life_time:   600
+
+cache:
+  proto: redis
+  addrs: 127.0.0.1:2379
+  db: 1
+  dial_timeout: 10
+  read_timeout: 10
+  write_timeout: 10
+  pool_size: 10
+
+queue:
+  proto: redis
+  addrs: 127.0.0.1:2379
+  password: 123
+  db: 1
+  dial_timeout: 10
+  read_timeout: 10
+  write_timeout: 10
+  pool_size: 10
+
+zipkin:
+  enable: true
+  url: http://127.0.0.1:9411/api/v2/spans

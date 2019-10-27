@@ -2,6 +2,7 @@ package duo
 
 import (
 	"fmt"
+	"github.com/sereiner/duo/conf"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -28,7 +29,6 @@ type Duo struct {
 	logger      *logger.Logger
 	closeChan   chan struct{}
 	interrupt   chan os.Signal
-	isDebug     bool
 	platName    string
 	systemName  string
 	clusterName string
@@ -36,56 +36,52 @@ type Duo struct {
 	trace       string
 	server      *server.ServerEngine
 	done        bool
+	conf.IServerConf
 }
 
-func NewDuo(appName string, logger *logger.Logger, isDebug bool, platName string, systemName string, clusterName string, trace string) *Duo {
+func NewDuo(appName string, logger *logger.Logger, platName string, systemName string, clusterName string, trace string, conf conf.IServerConf) *Duo {
 	return &Duo{
 		appName:     appName,
 		logger:      logger,
 		closeChan:   make(chan struct{}),
 		interrupt:   make(chan os.Signal, 1),
-		isDebug:     isDebug,
 		platName:    platName,
 		systemName:  systemName,
 		clusterName: clusterName,
 		trace:       trace,
+		IServerConf: conf,
 	}
 }
 
 func (d *Duo) Start(f func(server *grpc.Server)) (s string, err error) {
-	//非调试模式时设置日志写协程数为50个
-	if !d.isDebug {
+
+	if !d.IsDebug() {
 		logger.AddWriteThread(49)
 	}
 
-	reporter := zipkinhttp.NewReporter("http://127.0.0.1:9411/api/v2/spans")
-	defer reporter.Close()
+	filter := grpc_middleware.WithUnaryServerChain(
+		server.RecoveryInterceptor,
+		//otgrpc.OpenTracingServerInterceptor(tracer, otgrpc.LogPayloads()),
+		server.GetClientIP,
+		server.LoggingInterceptor,
+	)
 
-	// create our local service endpoint
-	endpoint, err := zipkin.NewEndpoint("myService", "myservice.mydomain.com:80")
-	if err != nil {
-		d.logger.Fatalf("unable to create local endpoint: %+v\n", err)
-	}
+	var tracer opentracing.Tracer
+	if d.ZipKinEnable() {
+		tracer, err = d.GetTracer(d.IServerConf)
+		if err != nil {
+			return "", err
+		}
 
-	// initialize our tracer
-	nativeTracer, err := zipkin.NewTracer(reporter, zipkin.WithLocalEndpoint(endpoint))
-	if err != nil {
-		d.logger.Fatalf("unable to create tracer: %+v\n", err)
-	}
-
-	tracer := zipkinot.Wrap(nativeTracer)
-
-	// optionally set as Global OpenTracing tracer instance
-	opentracing.SetGlobalTracer(tracer)
-
-	d.server = server.NewServiceEngine(d.appName, ":8090", server.WithServerOption([]grpc.ServerOption{
-		grpc_middleware.WithUnaryServerChain(
+		filter = grpc_middleware.WithUnaryServerChain(
 			server.RecoveryInterceptor,
 			otgrpc.OpenTracingServerInterceptor(tracer, otgrpc.LogPayloads()),
 			server.GetClientIP,
 			server.LoggingInterceptor,
-		),
-	}))
+		)
+	}
+
+	d.server = server.NewServiceEngine(d.appName, d.IServerConf, server.WithServerOption([]grpc.ServerOption{filter}))
 
 	d.server.ServiceFunc = f
 
@@ -105,8 +101,30 @@ LOOP:
 		}
 	}
 	d.logger.Infof("%s 正在退出...", d.appName)
-	d.server.Shutdown(time.Second * 1)
+	d.server.Shutdown(time.Millisecond * 500)
 	return fmt.Sprintf("%s 已安全退出", d.appName), nil
+}
+
+func (d *Duo) GetTracer(conf conf.IServerConf) (tracer opentracing.Tracer, err error) {
+
+	reporter := zipkinhttp.NewReporter(conf.GetZipKinReportURL())
+	defer reporter.Close()
+
+	endpoint, err := zipkin.NewEndpoint(conf.AppName(), "myservice.mydomain.com:80")
+	if err != nil {
+		return nil, fmt.Errorf("unable to create local endpoint: %+v\n", err)
+	}
+
+	nativeTracer, err := zipkin.NewTracer(reporter, zipkin.WithLocalEndpoint(endpoint))
+	if err != nil {
+		return nil, fmt.Errorf("unable to create tracer: %+v\n", err)
+	}
+
+	tracer = zipkinot.Wrap(nativeTracer)
+
+	opentracing.SetGlobalTracer(tracer)
+
+	return tracer, nil
 }
 
 func (d *Duo) freeMemory() {

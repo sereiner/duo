@@ -1,11 +1,8 @@
 package duo
 
-import "github.com/sereiner/duo/server"
-
 type Option func(*option)
 
 type option struct {
-	//RegistryAddr       string
 	// 应用名称
 	Name string
 	// 平台名称
@@ -14,8 +11,8 @@ type option struct {
 	SystemName string
 	// 集群名称
 	ClusterName string
-	IsDebug     bool
 	Trace       string
+	ConfPath    string
 }
 
 //WithPlatName 设置平台名称
@@ -43,13 +40,5 @@ func WithClusterName(clusterName string) Option {
 func WithName(name string) Option {
 	return func(o *option) {
 		o.Name = name
-	}
-}
-
-//WithDebug 设置debug模式
-func WithDebug() Option {
-	server.IS_DEBUG = true
-	return func(o *option) {
-		o.IsDebug = true
 	}
 }
