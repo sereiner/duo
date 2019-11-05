@@ -1,25 +1,29 @@
 package client
 
 import (
-	"github.com/sereiner/duo/context"
 	"testing"
+	"time"
+
+	"github.com/sereiner/duo/context"
 )
 
 func TestClient(t *testing.T) {
-	c,err :=NewClient("tcp","127.0.0.1:1208")
+	c, err := NewClient("tcp", "127.0.0.1:1208", WithRequestTimeout(time.Second*1))
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	defer c.Close()
 
-	err = c.Call(context.NewContext(),"hello",map[string]interface{}{
-		"name":"jack",
-		"age":12,
-	},map[string]interface{}{})
+	reply, err := c.Call(context.NewContext(), "hello", map[string]interface{}{
+		"name": "jack",
+		"age":  12,
+	})
 	if err != nil {
 		t.Error(err)
 		return
 	}
+
+	t.Log(reply)
 
 }

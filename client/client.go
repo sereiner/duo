@@ -2,20 +2,22 @@ package client
 
 import (
 	"errors"
-	"fmt"
-	"github.com/sereiner/duo/codec"
-	_ "github.com/sereiner/duo/codec/gob"
-	_ "github.com/sereiner/duo/codec/msgpack"
-	"github.com/sereiner/duo/context"
 	"log"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/sereiner/duo/codec"
+	_ "github.com/sereiner/duo/codec/gob"
+	_ "github.com/sereiner/duo/codec/msgpack"
+	"github.com/sereiner/duo/context"
 )
+
+var ErrorShutdown = errors.New("client is shut down")
 
 type RPCClient interface {
 	Go(ctx *context.Context, serviceMethod string, arg interface{}, reply interface{}, done chan *Call) *Call
-	Call(ctx *context.Context, serviceMethod string, arg interface{}, reply interface{}) error
+	Call(ctx *context.Context, serviceMethod string, arg interface{}) (reply interface{}, err error)
 	Close() error
 }
 
@@ -28,16 +30,16 @@ type Call struct {
 }
 
 type Client struct {
-	codec codec.Codec
+	codec        codec.Codec
 	Conn         net.Conn
 	pendingCalls sync.Map
 	mutex        sync.Mutex
 	shutdown     bool
 	*option
-	seq uint64
 }
 
-func NewClient(network string, addr string, opts ...Option) (RPCClient, error) {
+func NewClient(network string, addr string, opts ...Option) (*Client, error) {
+
 	client := &Client{
 		option: &option{
 			codecType: codec.MsgPackCodecType,
@@ -85,7 +87,7 @@ func (c *Client) Go(ctx *context.Context, serviceMethod string, args interface{}
 	return call
 }
 
-func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface{}, reply interface{}) error {
+func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface{}) (reply interface{}, err error) {
 
 	seq := context.GetSequence()
 	ctx.WithValue(context.RequestSeqKey, seq)
@@ -94,11 +96,11 @@ func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface
 	if c.option.RequestTimeout != time.Duration(0) {
 		canFn = ctx.WithTimeout(c.option.RequestTimeout)
 		metaDataInterface := ctx.Value(context.MetaDataKey)
-		var metaData map[string]string
+		var metaData map[string]interface{}
 		if metaDataInterface == nil {
-			metaData = make(map[string]string)
+			metaData = make(map[string]interface{})
 		} else {
-			metaData = metaDataInterface.(map[string]string)
+			metaData = metaDataInterface.(map[string]interface{})
 		}
 		metaData[context.RequestTimeoutKey] = c.option.RequestTimeout.String()
 		ctx.WithValue(context.MetaDataKey, metaData)
@@ -113,7 +115,7 @@ func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface
 		call.Error = errors.New("client request time out")
 	case <-call.Done:
 	}
-	return call.Error
+	return call.Reply, call.Error
 }
 
 func (c *Client) Close() error {
@@ -124,7 +126,7 @@ func (c *Client) Close() error {
 	c.pendingCalls.Range(func(key, value interface{}) bool {
 		call, ok := value.(*Call)
 		if ok {
-			//call.Error = ErrorShutdown
+			call.Error = ErrorShutdown
 			call.done()
 		}
 
@@ -138,17 +140,22 @@ func (c *Client) send(ctx *context.Context, call *Call) {
 	seq := ctx.Value(context.RequestSeqKey).(string)
 
 	c.pendingCalls.Store(seq, call)
+	msg := context.GetMessage()
+	msg.Seq = seq
+	msg.MethodName = call.ServiceMethod
+	msg.ServiceName = call.ServiceMethod
+	msg.MetaData = ctx.Value(context.MetaDataKey).(map[string]interface{})
+	msg.Data = call.Args
 
-	data, err := c.codec.Encode(call.Args)
+	data, err := c.codec.Encode(msg)
 	if err != nil {
 		log.Println(err)
 		c.pendingCalls.Delete(seq)
 		call.Error = err
 		call.done()
+		msg.Close()
 		return
 	}
-
-	fmt.Println(data)
 
 	_, err = c.Conn.Write(data)
 	if err != nil {
@@ -156,6 +163,7 @@ func (c *Client) send(ctx *context.Context, call *Call) {
 		c.pendingCalls.Delete(seq)
 		call.Error = err
 		call.done()
+		msg.Close()
 		return
 	}
 }
@@ -168,26 +176,32 @@ func (c *Client) input() {
 	for err == nil {
 
 		n, err = c.Conn.Read(buf)
-		fmt.Println(string(buf[:n]))
-		//seq := response.Seq
-		//callInterface, _ := c.pendingCalls.Load(seq)
-		//call := callInterface.(*Call)
-		//c.pendingCalls.Delete(seq)
-		//
-		//switch {
-		//case call == nil:
-		//	//请求已经被清理掉了，可能是已经超时了
-		//case response.Error != "":
-		//	call.Error = errors.New(response.Error)
-		//	call.done()
-		//default:
-		//	err = c.codec.Decode(response.Data, call.Reply)
-		//	if err != nil {
-		//		call.Error = errors.New("reading body " + err.Error())
-		//	}
-		//	call.done()
-		//}
+		if err != nil {
+			break
+		}
+
+		response := context.GetMessage()
+		err = c.codec.Decode(buf[:n], response)
+		if err != nil {
+			break
+		}
+
+		seq := response.Seq
+		callInterface, _ := c.pendingCalls.Load(seq)
+		call := callInterface.(*Call)
+		c.pendingCalls.Delete(seq)
+		switch {
+		case call == nil:
+			//请求已经被清理掉了，可能是已经超时了
+		case response.Error != "":
+			call.Error = errors.New(response.Error)
+			call.done()
+		default:
+			call.Reply = response.Data
+			call.done()
+		}
 	}
+	c.Close()
 }
 
 func (c *Client) setCodec() {
