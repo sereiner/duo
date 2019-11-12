@@ -14,6 +14,14 @@ const (
 	ProviderDegradeKey = "provider_degrade"
 )
 
+type IContext interface {
+	context.Context
+	WithValue(key, val interface{})
+	WithTimeout(timeout time.Duration) context.CancelFunc
+}
+
+
+
 type Context struct {
 	context.Context
 }

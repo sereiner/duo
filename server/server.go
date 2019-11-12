@@ -2,6 +2,10 @@ package server
 
 import (
 	"errors"
+	"fmt"
+	_ "github.com/sereiner/duo/codec/gob"
+	_ "github.com/sereiner/duo/codec/msgpack"
+	"github.com/sereiner/duo/component"
 	"io"
 	"log"
 	"net"
@@ -11,13 +15,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/megaredfan/rpc-demo/protocol"
 	"github.com/sereiner/duo/codec"
 	"github.com/sereiner/duo/context"
 )
 
 type RPCServer interface {
-	Register(rcvr interface{}, metaData map[string]string) error
+	Register(rcvr interface{}) error
 	Serve(network string, addr string) error
 	Close() error
 }
@@ -28,13 +31,8 @@ type Server struct {
 	serviceMap sync.Map
 	mutex      sync.Mutex
 	shutdown   bool
+	c          component.IContainer
 	*option
-}
-
-type methodType struct {
-	method    reflect.Method
-	ArgType   reflect.Type
-	ReplyType reflect.Type
 }
 
 type service struct {
@@ -44,12 +42,22 @@ type service struct {
 	methods map[string]*methodType
 }
 
-func NewServer(opts ...Option) RPCServer {
-	s := new(Server)
+type methodType struct {
+	method    reflect.Method
+	ArgType   reflect.Type
+	ReplyType reflect.Type
+}
+
+func NewServer(c component.IContainer, opts ...Option) RPCServer {
+	s := &Server{
+		c:      c,
+		option: &option{},
+	}
 
 	for _, op := range opts {
 		op(s.option)
 	}
+	s.codecType = codec.MsgPackCodecType
 
 	s.setCodec()
 	return s
@@ -63,28 +71,50 @@ func (s *Server) setCodec() {
 	s.codec = code
 }
 
-func (s *Server) Register(rcvr interface{}, metaData map[string]string) error {
-	typ := reflect.TypeOf(rcvr)
-	name := typ.Name()
+func (s *Server) Register(rFunc interface{}) error {
+
+	rFuncType := reflect.TypeOf(rFunc)
+	rFuncValue := reflect.ValueOf(rFunc)
+	if rFuncType.Kind() != reflect.Func {
+		panic("服务注册需要函数类型")
+	}
+
+	var rvalue []reflect.Value
+	if rFuncType.NumIn() == 1 {
+		if rFuncType.In(0).Name() != "IContainer" {
+			panic("注册函数参数类型错误")
+		}
+		ivalue := make([]reflect.Value, 0, 1)
+		ivalue = append(ivalue, reflect.ValueOf(s.c))
+		rvalue = rFuncValue.Call(ivalue)
+	} else {
+		panic("注册函数参数个数错误")
+	}
+
+	if len(rvalue) != 1 {
+		panic("类型错误,返回值只能有1个")
+	}
+
+	typ := rvalue[0].Type()
+	name := strings.Split(rFuncType.Out(0).String(), ".")[1]
 	srv := new(service)
 	srv.name = name
-	srv.rcvr = reflect.ValueOf(rcvr)
+	srv.rcvr = rvalue[0]
 	srv.typ = typ
-	methods := suitableMethods(typ, true)
+	methods := suitableMethods(typ)
 	srv.methods = methods
-
 	if len(srv.methods) == 0 {
 		var errorStr string
-
-		method := suitableMethods(reflect.PtrTo(srv.typ), false)
+		method := suitableMethods(reflect.PtrTo(srv.typ))
 		if len(method) != 0 {
-			errorStr = "rpcx.Register: type " + name + " has no exported methods of suitable type (hint: pass a pointer to value of that type)"
+			errorStr = "rpc.Register: type " + name + " has no exported methods of suitable type (hint: pass a pointer to value of that type)"
 		} else {
-			errorStr = "rpcx.Register: type " + name + " has no exported methods of suitable type"
+			errorStr = "rpc.Register: type " + name + " has no exported methods of suitable type"
 		}
 		log.Println(errorStr)
 		return errors.New(errorStr)
 	}
+	fmt.Printf("%+v", srv)
 	if _, duplicate := s.serviceMap.LoadOrStore(name, srv); duplicate {
 		return errors.New("rpc: service already defined: " + name)
 	}
@@ -92,10 +122,9 @@ func (s *Server) Register(rcvr interface{}, metaData map[string]string) error {
 }
 
 var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
-var typeOfContext = reflect.TypeOf((*context.Context)(nil)).Elem()
+var typeOfContext = reflect.TypeOf((*context.IContext)(nil)).Elem()
 
-//过滤符合规则的方法，从net.rpc包抄的
-func suitableMethods(typ reflect.Type, reportErr bool) map[string]*methodType {
+func suitableMethods(typ reflect.Type) map[string]*methodType {
 	methods := make(map[string]*methodType)
 	for m := 0; m < typ.NumMethod(); m++ {
 		method := typ.Method(m)
@@ -106,59 +135,50 @@ func suitableMethods(typ reflect.Type, reportErr bool) map[string]*methodType {
 		if method.PkgPath != "" {
 			continue
 		}
-		// 需要有四个参数: receiver, Context, args, *reply.
-		if mtype.NumIn() != 4 {
-			if reportErr {
-				log.Println("method", mname, "has wrong number of ins:", mtype.NumIn())
-			}
+		// 需要有三个参数: receiver, *context.Context, req
+		if mtype.NumIn() != 3 {
+
+			log.Println("method", mname, "has wrong number of ins:", mtype.NumIn())
 			continue
 		}
-		// 第一个参数必须是context.Context
+		// 第一个参数必须是 *context.Context
 		ctxType := mtype.In(1)
 		if !ctxType.Implements(typeOfContext) {
-			if reportErr {
-				log.Println("method", mname, " must use context.Context as the first parameter")
-			}
+			log.Println("method", mname, " must use context.Context as the first parameter")
 			continue
 		}
 
-		// 第二个参数是arg
+		// 第二个参数是请求参数
 		argType := mtype.In(2)
 		if !isExportedOrBuiltinType(argType) {
-			if reportErr {
-				log.Println(mname, "parameter type not exported:", argType)
-			}
+			log.Println(mname, "parameter type not exported:", argType)
 			continue
 		}
-		// 第三个参数是返回值，必须是指针类型的
-		replyType := mtype.In(3)
+
+		// 必须有两个个返回值
+		if mtype.NumOut() != 2 {
+			log.Println("method", mname, "has wrong number of outs:", mtype.NumOut())
+			continue
+		}
+
+		// 第一个返回值是结果，必须是指针类型的
+		replyType := mtype.Out(0)
 		if replyType.Kind() != reflect.Ptr {
-			if reportErr {
-				log.Println("method", mname, "reply type not a pointer:", replyType)
-			}
+			log.Println("method", mname, "reply type not a pointer:", replyType)
 			continue
 		}
 		// 返回值的类型必须是可导出的
 		if !isExportedOrBuiltinType(replyType) {
-			if reportErr {
-				log.Println("method", mname, "reply type not exported:", replyType)
-			}
+			log.Println("method", mname, "reply type not exported:", replyType)
 			continue
 		}
-		// 必须有一个返回值
-		if mtype.NumOut() != 1 {
-			if reportErr {
-				log.Println("method", mname, "has wrong number of outs:", mtype.NumOut())
-			}
+
+		// 第二个返回值类型必须是error
+		if returnType := mtype.Out(1); returnType != typeOfError {
+			log.Println("method", mname, "returns", returnType.String(), "not error")
 			continue
 		}
-		// 返回值类型必须是error
-		if returnType := mtype.Out(0); returnType != typeOfError {
-			if reportErr {
-				log.Println("method", mname, "returns", returnType.String(), "not error")
-			}
-			continue
-		}
+
 		methods[mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType}
 	}
 	return methods
@@ -226,9 +246,9 @@ func (s *Server) serveTransport(conn net.Conn) {
 			if err == io.EOF {
 				log.Printf("client has closed this connection: %s", conn.RemoteAddr().String())
 			} else if strings.Contains(err.Error(), "use of closed network connection") {
-				log.Printf("rpcx: connection %s is closed", conn.RemoteAddr().String())
+				log.Printf("rpc: connection %s is closed", conn.RemoteAddr().String())
 			} else {
-				log.Printf("rpcx: failed to read request: %v", err)
+				log.Printf("rpc: failed to read request: %v", err)
 			}
 			return
 		}
@@ -241,6 +261,7 @@ func (s *Server) serveTransport(conn net.Conn) {
 		}
 		sname := requestMsg.ServiceName
 		mname := requestMsg.MethodName
+		fmt.Println(sname, mname)
 		srvInterface, ok := s.serviceMap.Load(sname)
 		if !ok {
 			s.writeErrorResponse(requestMsg, conn, "can not find service")
@@ -258,33 +279,47 @@ func (s *Server) serveTransport(conn net.Conn) {
 			return
 		}
 		argv := newValue(mtype.ArgType)
-		replyv := newValue(mtype.ReplyType)
+		//replyv := newValue(mtype.ReplyType)
 
 		ctx := context.NewContext()
-		//err = s.codec.Decode(requestMsg.Data, argv)
+		err = s.codec.Decode(requestMsg.Data, argv)
+		if err != nil {
+			log.Println(err)
+			return
+		}
 
 		var returns []reflect.Value
 		if mtype.ArgType.Kind() != reflect.Ptr {
 			returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
 				reflect.ValueOf(ctx),
 				reflect.ValueOf(argv).Elem(),
-				reflect.ValueOf(replyv)})
+			})
 		} else {
 			returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
 				reflect.ValueOf(ctx),
 				reflect.ValueOf(argv),
-				reflect.ValueOf(replyv)})
+			})
 		}
-		if len(returns) > 0 && returns[0].Interface() != nil {
-			err = returns[0].Interface().(error)
+
+		if len(returns) != 2 || returns[1].Interface() != nil {
+			err = returns[1].Interface().(error)
 			s.writeErrorResponse(requestMsg, conn, err.Error())
 			return
 		}
+		reBt, err := s.codec.Encode(returns[0].Interface())
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		requestMsg.Data = reBt
 
-		requestMsg.StatusCode = protocol.StatusOK
-		requestMsg.Data = responseData
+		res, err := s.codec.Encode(requestMsg)
+		if err != nil {
+			log.Println(err)
+			return
+		}
 
-		_, err = conn.Write(protocol.EncodeMessage(s.option.ProtocolType, response))
+		_, err = conn.Write(res)
 		if err != nil {
 			log.Println(err)
 			return

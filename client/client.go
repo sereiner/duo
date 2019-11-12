@@ -24,7 +24,7 @@ type RPCClient interface {
 type Call struct {
 	ServiceMethod string
 	Args          interface{}
-	Reply         interface{}
+	Reply         []byte
 	Error         error
 	Done          chan *Call
 }
@@ -67,7 +67,7 @@ func (c *Call) done() {
 	c.Done <- c
 }
 
-func (c *Client) Go(ctx *context.Context, serviceMethod string, args interface{}, reply interface{}, done chan *Call) *Call {
+func (c *Client) Go(ctx *context.Context, serviceMethod string, args interface{}, reply []byte, done chan *Call) *Call {
 	call := new(Call)
 	call.ServiceMethod = serviceMethod
 	call.Args = args
@@ -87,7 +87,7 @@ func (c *Client) Go(ctx *context.Context, serviceMethod string, args interface{}
 	return call
 }
 
-func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface{}) (reply interface{}, err error) {
+func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface{}) (reply []byte, err error) {
 
 	seq := context.GetSequence()
 	ctx.WithValue(context.RequestSeqKey, seq)
@@ -145,7 +145,16 @@ func (c *Client) send(ctx *context.Context, call *Call) {
 	msg.MethodName = call.ServiceMethod
 	msg.ServiceName = call.ServiceMethod
 	msg.MetaData = ctx.Value(context.MetaDataKey).(map[string]interface{})
-	msg.Data = call.Args
+	bt, err := c.codec.Encode(call.Args)
+	if err != nil {
+		log.Println(err)
+		c.pendingCalls.Delete(seq)
+		call.Error = err
+		call.done()
+		msg.Close()
+		return
+	}
+	msg.Data = bt
 
 	data, err := c.codec.Encode(msg)
 	if err != nil {

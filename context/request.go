@@ -33,7 +33,7 @@ type Header struct {
 
 type Message struct {
 	*Header
-	Data interface{}
+	Data []byte
 }
 
 func New() *Message {

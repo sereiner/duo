@@ -1,60 +1,44 @@
 package main
 
 import (
-	"fmt"
-	"github.com/sereiner/duo/codec/msgpack"
+	"github.com/sereiner/duo/component"
 	"github.com/sereiner/duo/context"
-	"net"
+	"github.com/sereiner/duo/server"
 )
 
 func main() {
-	server, err := net.Listen("tcp", ":1208")
-	if err != nil {
-		panic(err)
-	}
-	for {
-		conn, err := server.Accept()
-		if err != nil {
 
-			continue
-		}
 
-		go Handler(conn)
-	}
-
+	s := server.NewServer(component.New())
+	s.Register(NewUserServer)
+	s.Serve("tcp",":9999")
 }
 
-func Handler(conn net.Conn) {
-
-	buf := make([]byte, 1024)
-	codec := msgpack.MsgCodec{}
-
-	for {
-		n, err := conn.Read(buf)
-		if err != nil || n == 0 {
-			fmt.Println(err)
-			conn.Close()
-			return
-		}
-
-		msg := context.GetMessage()
-		err = codec.Decode(buf[:n],msg)
-		if err != nil {
-			fmt.Println(err)
-			conn.Close()
-			return
-		}
 
 
 
-		fmt.Println(msg)
-		msg.Data = map[string]interface{}{
-			"a":1,
-			"b":2,
-		}
 
-		data ,_ :=codec.Encode(msg)
+type UserServer struct {
+	c component.IContainer
+}
 
-		conn.Write(data)
-	}
+type Request struct {
+	Name string
+}
+
+type Response struct {
+	Name string
+	Age int
+}
+
+func NewUserServer(c component.IContainer) *UserServer {
+	return &UserServer{c:c}
+}
+
+
+func(u *UserServer) UserServer(ctx *context.Context,req *Request) (resp *Response,err error) {
+	return &Response{
+		Name: req.Name,
+		Age:  20,
+	},nil
 }
