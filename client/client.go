@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,8 +17,9 @@ import (
 var ErrorShutdown = errors.New("client is shut down")
 
 type RPCClient interface {
-	Go(ctx *context.Context, serviceMethod string, arg interface{}, reply interface{}, done chan *Call) *Call
-	Call(ctx *context.Context, serviceMethod string, arg interface{}) (reply interface{}, err error)
+	Go(ctx *context.Context, serviceMethod string, arg interface{}, reply []byte, done chan *Call) *Call
+	Call(ctx *context.Context, serviceMethod string, arg interface{}) (reply []byte, err error)
+	Decode(data []byte, value interface{}) error
 	Close() error
 }
 
@@ -30,7 +32,7 @@ type Call struct {
 }
 
 type Client struct {
-	codec        codec.Codec
+	Codec        codec.Codec
 	Conn         net.Conn
 	pendingCalls sync.Map
 	mutex        sync.Mutex
@@ -118,6 +120,12 @@ func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface
 	return call.Reply, call.Error
 }
 
+func (c *Client) Decode(data []byte, value interface{}) error {
+
+	return c.Codec.Decode(data, value)
+
+}
+
 func (c *Client) Close() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -142,10 +150,10 @@ func (c *Client) send(ctx *context.Context, call *Call) {
 	c.pendingCalls.Store(seq, call)
 	msg := context.GetMessage()
 	msg.Seq = seq
-	msg.MethodName = call.ServiceMethod
-	msg.ServiceName = call.ServiceMethod
+	msg.MethodName = strings.Split(call.ServiceMethod, "/")[1]
+	msg.ServiceName = strings.Split(call.ServiceMethod, "/")[0]
 	msg.MetaData = ctx.Value(context.MetaDataKey).(map[string]interface{})
-	bt, err := c.codec.Encode(call.Args)
+	bt, err := c.Codec.Encode(call.Args)
 	if err != nil {
 		log.Println(err)
 		c.pendingCalls.Delete(seq)
@@ -156,7 +164,7 @@ func (c *Client) send(ctx *context.Context, call *Call) {
 	}
 	msg.Data = bt
 
-	data, err := c.codec.Encode(msg)
+	data, err := c.Codec.Encode(msg)
 	if err != nil {
 		log.Println(err)
 		c.pendingCalls.Delete(seq)
@@ -190,7 +198,7 @@ func (c *Client) input() {
 		}
 
 		response := context.GetMessage()
-		err = c.codec.Decode(buf[:n], response)
+		err = c.Codec.Decode(buf[:n], response)
 		if err != nil {
 			break
 		}
@@ -218,5 +226,5 @@ func (c *Client) setCodec() {
 	if err != nil {
 		panic(err)
 	}
-	c.codec = code
+	c.Codec = code
 }

@@ -8,7 +8,7 @@ import (
 type Option func(*option)
 
 type option struct {
-	codecType codec.CodecType
+	codecType      codec.CodecType
 	RequestTimeout time.Duration
 }
 

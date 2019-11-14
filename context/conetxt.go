@@ -20,8 +20,6 @@ type IContext interface {
 	WithTimeout(timeout time.Duration) context.CancelFunc
 }
 
-
-
 type Context struct {
 	context.Context
 }

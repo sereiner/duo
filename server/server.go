@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	_ "github.com/sereiner/duo/codec/gob"
 	_ "github.com/sereiner/duo/codec/msgpack"
 	"github.com/sereiner/duo/component"
@@ -18,6 +17,9 @@ import (
 	"github.com/sereiner/duo/codec"
 	"github.com/sereiner/duo/context"
 )
+
+var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
+var typeOfContext = reflect.TypeOf((*context.IContext)(nil)).Elem()
 
 type RPCServer interface {
 	Register(rcvr interface{}) error
@@ -96,13 +98,14 @@ func (s *Server) Register(rFunc interface{}) error {
 	}
 
 	typ := rvalue[0].Type()
-	name := strings.Split(rFuncType.Out(0).String(), ".")[1]
+	name := getServiceName(rFuncType.Out(0).String())
 	srv := new(service)
 	srv.name = name
 	srv.rcvr = rvalue[0]
 	srv.typ = typ
 	methods := suitableMethods(typ)
 	srv.methods = methods
+
 	if len(srv.methods) == 0 {
 		var errorStr string
 		method := suitableMethods(reflect.PtrTo(srv.typ))
@@ -114,19 +117,20 @@ func (s *Server) Register(rFunc interface{}) error {
 		log.Println(errorStr)
 		return errors.New(errorStr)
 	}
-	fmt.Printf("%+v", srv)
+
 	if _, duplicate := s.serviceMap.LoadOrStore(name, srv); duplicate {
 		return errors.New("rpc: service already defined: " + name)
 	}
+
 	return nil
 }
 
-var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
-var typeOfContext = reflect.TypeOf((*context.IContext)(nil)).Elem()
-
 func suitableMethods(typ reflect.Type) map[string]*methodType {
+
 	methods := make(map[string]*methodType)
+
 	for m := 0; m < typ.NumMethod(); m++ {
+
 		method := typ.Method(m)
 		mtype := method.Type
 		mname := method.Name
@@ -181,20 +185,30 @@ func suitableMethods(typ reflect.Type) map[string]*methodType {
 
 		methods[mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType}
 	}
+
 	return methods
+
 }
 
-// Is this type exported or a builtin?
+func getServiceName(s string) string {
+
+	if len(s) == 0 {
+		return ""
+	}
+
+	return strings.Trim(s, "*")
+
+}
+
 func isExportedOrBuiltinType(t reflect.Type) bool {
+
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	// PkgPath will be non-empty even for an exported type,
-	// so we need to check the type name as well.
+
 	return isExported(t.Name()) || t.PkgPath() == ""
 }
 
-// Is this an exported - upper case - name?
 func isExported(name string) bool {
 	r, _ := utf8.DecodeRuneInString(name)
 	return unicode.IsUpper(r)
@@ -259,14 +273,16 @@ func (s *Server) serveTransport(conn net.Conn) {
 			log.Println(err)
 			return
 		}
+
 		sname := requestMsg.ServiceName
 		mname := requestMsg.MethodName
-		fmt.Println(sname, mname)
+
 		srvInterface, ok := s.serviceMap.Load(sname)
 		if !ok {
 			s.writeErrorResponse(requestMsg, conn, "can not find service")
 			return
 		}
+
 		srv, ok := srvInterface.(*service)
 		if !ok {
 			s.writeErrorResponse(requestMsg, conn, "not *service type")
@@ -278,10 +294,10 @@ func (s *Server) serveTransport(conn net.Conn) {
 			s.writeErrorResponse(requestMsg, conn, "can not find method")
 			return
 		}
-		argv := newValue(mtype.ArgType)
-		//replyv := newValue(mtype.ReplyType)
 
+		argv := newValue(mtype.ArgType)
 		ctx := context.NewContext()
+
 		err = s.codec.Decode(requestMsg.Data, argv)
 		if err != nil {
 			log.Println(err)
@@ -306,13 +322,14 @@ func (s *Server) serveTransport(conn net.Conn) {
 			s.writeErrorResponse(requestMsg, conn, err.Error())
 			return
 		}
+
 		reBt, err := s.codec.Encode(returns[0].Interface())
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		requestMsg.Data = reBt
 
+		requestMsg.Data = reBt
 		res, err := s.codec.Encode(requestMsg)
 		if err != nil {
 			log.Println(err)
@@ -328,17 +345,20 @@ func (s *Server) serveTransport(conn net.Conn) {
 }
 
 func newValue(t reflect.Type) interface{} {
+
 	if t.Kind() == reflect.Ptr {
 		return reflect.New(t.Elem()).Interface()
 	} else {
 		return reflect.New(t).Interface()
 	}
+
 }
 
 func (s *Server) writeErrorResponse(response *context.Message, w io.Writer, err string) {
+
 	response.Error = err
-	log.Println(response.Error)
 	response.Data = nil
 	bt, _ := s.codec.Encode(response)
 	_, _ = w.Write(bt)
+
 }
