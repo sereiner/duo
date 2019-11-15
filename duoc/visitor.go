@@ -10,18 +10,14 @@ type Visitor struct {
 }
 
 func (v *Visitor) Visit(node ast.Node) ast.Visitor {
-	switch node.(type) {
+	switch node := node.(type) {
 	case *ast.File:
-		packName := node.(*ast.File)
-		interfaceGroup.PackageName = packName.Name.Name
-	case *ast.Comment:
-		//comment := node.(*ast.Comment)
-		//interfaceGroup.InterfaceDoc = append(interfaceGroup.InterfaceDoc, comment.Text)
+		interfaceGroup.PackageName = node.Name.Name
+
 	case *ast.GenDecl:
-		genDecl := node.(*ast.GenDecl)
-		if genDecl.Tok == token.IMPORT {
-			imports := make([]string, len(genDecl.Specs)+2)
-			for k, v := range genDecl.Specs {
+		if node.Tok == token.IMPORT {
+			imports := make([]string, len(node.Specs)+2)
+			for k, v := range node.Specs {
 				imptSpec := v.(*ast.ImportSpec)
 				imports[k] = imptSpec.Path.Value
 			}
@@ -31,18 +27,16 @@ func (v *Visitor) Visit(node ast.Node) ast.Visitor {
 		}
 
 	case *ast.InterfaceType:
-		iface := node.(*ast.InterfaceType)
-		addContext(iface)
+		parserInterface(node)
 	case *ast.TypeSpec:
-		typeSpec := node.(*ast.TypeSpec)
-		structName := typeSpec.Name.Name[1:]
+		structName := node.Name.Name[1:]
 		interfaceGroup.StructName = append(interfaceGroup.StructName, structName)
 	}
+
 	return v
 }
 
-// addContext 添加context参数
-func addContext(iface *ast.InterfaceType) {
+func parserInterface(iface *ast.InterfaceType) {
 	interfaceItem := InterfaceItem{}
 	if iface.Methods != nil || iface.Methods.List != nil {
 		methods := make([]MethodItem, len(iface.Methods.List))

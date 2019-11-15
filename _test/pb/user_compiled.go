@@ -3,40 +3,42 @@ package pb
 
 import (
 	"github.com/sereiner/duo/_test/info"
-	"github.com/sereiner/duo/context"
 	"github.com/sereiner/duo/client"
 	"github.com/sereiner/duo/component"
+	"github.com/sereiner/duo/context"
 )
+
 type Server struct {
 	c component.IContainer
 }
 
-func NewServer(c component.IContainer) *Server{
-	return &Server{c:c}
+func NewServer(c component.IContainer) *Server {
+	return &Server{c: c}
 }
+
 // GetAge 获取年龄
-func(a *Server) GetAge(ctx *context.Context,req *info.Request)(resp *info.Response,err error) {
+func (a *Server) GetAge(ctx *context.Context, req *info.Request) (resp *info.Response, err error) {
 	panic("server not implement GetAge")
 }
 
 type ServerClient struct {
-	client.RPCClient
+	cc client.RPCClient
 }
 
-func NewServerClient (client client.RPCClient) *ServerClient {
-	return &ServerClient{RPCClient:client}
+func NewServerClient(c client.RPCClient) *ServerClient {
+	return &ServerClient{cc: c}
 }
+
 // GetAge 获取年龄
-func(c *ServerClient) GetAge(ctx *context.Context,req *info.Request)(resp *info.Response,err error) {
-	reply, err := c.Call(ctx, "pb.Server/GetAge", req)
+func (c *ServerClient) GetAge(ctx *context.Context, req *info.Request) (resp *info.Response, err error) {
+	reply, err := c.cc.Call(ctx, "pb.Server/GetAge", req)
 	if err != nil {
 		return nil, err
 	}
 	m := &info.Response{}
-	err = c.RPCClient.Decode(reply, m)
+	err = c.cc.Decode(reply, m)
 	if err != nil {
 		return nil, err
 	}
 	return m, nil
 }
-

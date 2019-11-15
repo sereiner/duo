@@ -96,23 +96,23 @@ func main() {
 
 		// 生成客户端代码
 		bf.WriteString("type " + interfaceGroup.StructName[k] + "Client struct {\n")
-		bf.WriteString("\tclient.RPCClient\n")
+		bf.WriteString("\tcc client.RPCClient\n")
 		bf.WriteString("}\n\n")
 
-		bf.WriteString("func New" + interfaceGroup.StructName[k] + "Client (client client.RPCClient) *" + interfaceGroup.StructName[k] + "Client {\n")
-		bf.WriteString("\treturn &" + interfaceGroup.StructName[k] + "Client{RPCClient:client}\n")
+		bf.WriteString("func New" + interfaceGroup.StructName[k] + "Client (c client.RPCClient) *" + interfaceGroup.StructName[k] + "Client {\n")
+		bf.WriteString("\treturn &" + interfaceGroup.StructName[k] + "Client{cc:c}\n")
 		bf.WriteString("}\n")
 
 		for _, method := range v.Methods {
 			bf.WriteString(method.MethodDoc + "\n")
 			bf.WriteString("func(c *" + interfaceGroup.StructName[k] + "Client) " + method.MethodName + "(" + strings.Join(method.Params, ",") + ")" +
 				"(" + strings.Join(method.Results, ",") + ") {\n\t")
-			bf.WriteString(`reply, err := c.Call(ctx, "` + interfaceGroup.PackageName + "." + interfaceGroup.StructName[k] + "/" + method.MethodName + `", req)` + "\n\t")
+			bf.WriteString(`reply, err := c.cc.Call(ctx, "` + interfaceGroup.PackageName + "." + interfaceGroup.StructName[k] + "/" + method.MethodName + `", req)` + "\n\t")
 			bf.WriteString("if err != nil {\n\t\t")
 			bf.WriteString("return nil, err\n\t")
 			bf.WriteString("}\n\t")
 			bf.WriteString("m := &" + strings.Split(method.Results[0], "*")[1] + "{}\n\t")
-			bf.WriteString("err = c.RPCClient.Decode(reply, m)\n\t")
+			bf.WriteString("err = c.cc.Decode(reply, m)\n\t")
 			bf.WriteString("if err != nil {\n\t\t")
 			bf.WriteString("return nil, err\n\t")
 			bf.WriteString("}\n\t")
@@ -122,6 +122,8 @@ func main() {
 		}
 	}
 
-	ioutil.WriteFile(outPath, bf.Bytes(), 0644)
+	if err := ioutil.WriteFile(outPath, bf.Bytes(), 0644); err != nil {
+		log.Fatalln(err)
+	}
 
 }
