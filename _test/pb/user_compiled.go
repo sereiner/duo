@@ -18,7 +18,14 @@ func NewServer(c component.IContainer) *Server {
 
 // GetAge 获取年龄
 func (a *Server) GetAge(ctx *context.Context, req *info.Request) (resp *info.Response, err error) {
-	panic("server not implement GetAge")
+	ctx.Log.Info("-----GetAge---")
+
+	ctx.Log.Info("success")
+	return &info.Response{
+		Name: req.Name,
+		Age:  18,
+	}, nil
+
 }
 
 type ServerClient struct {

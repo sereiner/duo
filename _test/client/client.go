@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/sereiner/duo/_test/info"
 	"github.com/sereiner/duo/_test/pb"
 	"github.com/sereiner/duo/client"
 	"github.com/sereiner/duo/context"
-	"time"
 )
 
 func main() {
@@ -17,5 +18,5 @@ func main() {
 	defer c.Close()
 
 	u := pb.NewServerClient(c)
-	fmt.Println(u.GetAge(context.NewContext(), &info.Request{Name: "tom"}))
+	fmt.Println(u.GetAge(context.GetContext(), &info.Request{Name: "tom"}))
 }

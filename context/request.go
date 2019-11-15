@@ -11,10 +11,10 @@ func GetSequence() string {
 	return utility.GetGUID()[0:9]
 }
 
-var contextPool *sync.Pool
+var messagePool *sync.Pool
 
 func init() {
-	contextPool = &sync.Pool{
+	messagePool = &sync.Pool{
 		New: func() interface{} {
 			return New()
 		},
@@ -43,7 +43,7 @@ func New() *Message {
 }
 
 func GetMessage() (m *Message) {
-	return contextPool.Get().(*Message)
+	return messagePool.Get().(*Message)
 }
 
 func (m *Message) String() string {
@@ -60,5 +60,5 @@ func (m *Message) Close() {
 	m.Error = ""
 	m.MetaData = nil
 
-	contextPool.Put(m)
+	messagePool.Put(m)
 }

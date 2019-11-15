@@ -3,9 +3,6 @@ package server
 import (
 	"errors"
 	"fmt"
-	_ "github.com/sereiner/duo/codec/gob"
-	_ "github.com/sereiner/duo/codec/msgpack"
-	"github.com/sereiner/duo/component"
 	"io"
 	"log"
 	"net"
@@ -14,6 +11,10 @@ import (
 	"sync"
 	"unicode"
 	"unicode/utf8"
+
+	_ "github.com/sereiner/duo/codec/gob"
+	_ "github.com/sereiner/duo/codec/msgpack"
+	"github.com/sereiner/duo/component"
 
 	"github.com/sereiner/duo/codec"
 	"github.com/sereiner/duo/context"
@@ -297,7 +298,8 @@ func (s *Server) serveTransport(conn net.Conn) {
 		}
 
 		argv := newValue(mtype.ArgType)
-		ctx := context.NewContext()
+		ctx := context.GetContext()
+		ctx.SetSeq(requestMsg.Seq)
 
 		err = s.codec.Decode(requestMsg.Data, argv)
 		if err != nil {
@@ -353,6 +355,8 @@ func (s *Server) call(conn net.Conn, mtype *methodType, requestMsg *context.Mess
 		log.Println(err)
 		return
 	}
+
+	ctx.Close()
 }
 
 func newValue(t reflect.Type) interface{} {

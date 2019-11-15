@@ -3,8 +3,7 @@ module github.com/sereiner/duo
 go 1.13
 
 require (
-	github.com/coreos/etcd v3.3.15+incompatible
-	github.com/megaredfan/rpc-demo v0.0.5
-	github.com/sereiner/library v0.0.0-20190920031452-3a54c7baf5f6
+	github.com/sereiner/library v0.0.0-20191105084300-b4b27f8cb2de
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
+	google.golang.org/appengine v1.4.0 // indirect
 )

@@ -91,8 +91,13 @@ func (c *Client) Go(ctx *context.Context, serviceMethod string, args interface{}
 
 func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface{}) (reply []byte, err error) {
 
-	seq := context.GetSequence()
-	ctx.WithValue(context.RequestSeqKey, seq)
+	var seq string
+	if ctx.Value(context.RequestSeqKey) == nil {
+		seq = context.GetSequence()
+		ctx.WithValue(context.RequestSeqKey, seq)
+	} else {
+		seq = ctx.Value(context.RequestSeqKey).(string)
+	}
 
 	canFn := func() {}
 	if c.option.RequestTimeout != time.Duration(0) {
@@ -146,7 +151,6 @@ func (c *Client) Close() error {
 
 func (c *Client) send(ctx *context.Context, call *Call) {
 	seq := ctx.Value(context.RequestSeqKey).(string)
-
 	c.pendingCalls.Store(seq, call)
 	msg := context.GetMessage()
 	msg.Seq = seq
