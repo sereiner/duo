@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	_ "github.com/sereiner/duo/codec/gob"
 	_ "github.com/sereiner/duo/codec/msgpack"
 	"github.com/sereiner/duo/component"
@@ -303,44 +304,54 @@ func (s *Server) serveTransport(conn net.Conn) {
 			log.Println(err)
 			return
 		}
+		go s.call(conn, mtype, requestMsg, srv, ctx, argv)
 
-		var returns []reflect.Value
-		if mtype.ArgType.Kind() != reflect.Ptr {
-			returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
-				reflect.ValueOf(ctx),
-				reflect.ValueOf(argv).Elem(),
-			})
-		} else {
-			returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
-				reflect.ValueOf(ctx),
-				reflect.ValueOf(argv),
-			})
-		}
+	}
+}
+func (s *Server) call(conn net.Conn, mtype *methodType, requestMsg *context.Message, srv *service, ctx *context.Context, argv interface{}) {
 
-		if len(returns) != 2 || returns[1].Interface() != nil {
-			err = returns[1].Interface().(error)
-			s.writeErrorResponse(requestMsg, conn, err.Error())
-			return
+	defer func() {
+		if err := recover(); err != nil {
+			s.writeErrorResponse(requestMsg, conn, fmt.Errorf("%v", err).Error())
 		}
+	}()
 
-		reBt, err := s.codec.Encode(returns[0].Interface())
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	var returns []reflect.Value
+	if mtype.ArgType.Kind() != reflect.Ptr {
+		returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
+			reflect.ValueOf(ctx),
+			reflect.ValueOf(argv).Elem(),
+		})
+	} else {
+		returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
+			reflect.ValueOf(ctx),
+			reflect.ValueOf(argv),
+		})
+	}
 
-		requestMsg.Data = reBt
-		res, err := s.codec.Encode(requestMsg)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	if len(returns) != 2 || returns[1].Interface() != nil {
+		err := returns[1].Interface().(error)
+		s.writeErrorResponse(requestMsg, conn, err.Error())
+		return
+	}
 
-		_, err = conn.Write(res)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	reBt, err := s.codec.Encode(returns[0].Interface())
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	requestMsg.Data = reBt
+	res, err := s.codec.Encode(requestMsg)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	_, err = conn.Write(res)
+	if err != nil {
+		log.Println(err)
+		return
 	}
 }
 

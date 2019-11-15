@@ -20,12 +20,13 @@ func (v *Visitor) Visit(node ast.Node) ast.Visitor {
 	case *ast.GenDecl:
 		genDecl := node.(*ast.GenDecl)
 		if genDecl.Tok == token.IMPORT {
-			imports := make([]string, len(genDecl.Specs)+1)
+			imports := make([]string, len(genDecl.Specs)+2)
 			for k, v := range genDecl.Specs {
 				imptSpec := v.(*ast.ImportSpec)
 				imports[k] = imptSpec.Path.Value
 			}
 			imports[len(imports)-1] = `"github.com/sereiner/duo/component"`
+			imports[len(imports)-2] = `"github.com/sereiner/duo/client"`
 			interfaceGroup.Imports = append(interfaceGroup.Imports, imports...)
 		}
 
