@@ -9,6 +9,7 @@ import (
 func main() {
 
 	s := server.NewServer(component.New())
+	defer s.Close()
 	s.Register(pb.NewServer)
 	s.Serve("tcp", ":9999")
 }

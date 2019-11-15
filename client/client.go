@@ -37,12 +37,14 @@ type Client struct {
 	pendingCalls sync.Map
 	mutex        sync.Mutex
 	shutdown     bool
+	middleware   []MiddlewareFunc
 	*option
 }
 
 func NewClient(network string, addr string, opts ...Option) (*Client, error) {
 
 	client := &Client{
+		middleware: []MiddlewareFunc{WrapLog},
 		option: &option{
 			codecType: codec.MsgPackCodecType,
 		},
@@ -89,6 +91,18 @@ func (c *Client) Go(ctx *context.Context, serviceMethod string, args interface{}
 	return call
 }
 
+func (c *Client) PreCall(ctx *context.Context, serviceMethod string, args interface{}) (reply []byte, err error) {
+	Wrapper := func(goFunc CallFunc, middleware ...MiddlewareFunc) CallFunc {
+		for i := len(middleware) - 1; i >= 0; i-- {
+			goFunc = middleware[i](goFunc)
+		}
+		return goFunc
+	}
+
+	fn := Wrapper(c.Call, c.middleware...)
+	return fn(ctx, serviceMethod, args)
+}
+
 func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface{}) (reply []byte, err error) {
 
 	var seq string
@@ -114,6 +128,7 @@ func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface
 	}
 
 	done := make(chan *Call, 1)
+
 	call := c.Go(ctx, serviceMethod, args, reply, done)
 	select {
 	case <-ctx.Done():

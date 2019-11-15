@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -24,7 +23,7 @@ var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
 var typeOfContext = reflect.TypeOf((*context.IContext)(nil)).Elem()
 
 type RPCServer interface {
-	Register(rcvr interface{}) error
+	Register(rcvr interface{})
 	Serve(network string, addr string) error
 	Close() error
 }
@@ -75,7 +74,7 @@ func (s *Server) setCodec() {
 	s.codec = code
 }
 
-func (s *Server) Register(rFunc interface{}) error {
+func (s *Server) Register(rFunc interface{}) {
 
 	rFuncType := reflect.TypeOf(rFunc)
 	rFuncValue := reflect.ValueOf(rFunc)
@@ -116,15 +115,14 @@ func (s *Server) Register(rFunc interface{}) error {
 		} else {
 			errorStr = "rpc.Register: type " + name + " has no exported methods of suitable type"
 		}
-		log.Println(errorStr)
-		return errors.New(errorStr)
+
+		panic(errorStr)
 	}
 
 	if _, duplicate := s.serviceMap.LoadOrStore(name, srv); duplicate {
-		return errors.New("rpc: service already defined: " + name)
+		panic("rpc: service already defined: " + name)
 	}
 
-	return nil
 }
 
 func suitableMethods(typ reflect.Type) map[string]*methodType {

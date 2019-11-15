@@ -18,5 +18,10 @@ func main() {
 	defer c.Close()
 
 	u := pb.NewServerClient(c)
-	fmt.Println(u.GetAge(context.GetContext(), &info.Request{Name: "tom"}))
+	ctx := context.GetContext()
+
+	fmt.Println(u.GetAge(ctx, &info.Request{Name: "tom"}))
+	fmt.Println(u.GetAge(ctx, &info.Request{Name: "jack"}))
+	fmt.Println(u.GetAge(ctx, &info.Request{Name: "marry"}))
+	fmt.Println(u.GetAge(ctx, &info.Request{Name: "jerry"}))
 }
