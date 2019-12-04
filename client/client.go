@@ -45,6 +45,14 @@ func NewClient(network string, addr string, opts ...Option) (*Client, error) {
 
 	client := &Client{
 		middleware: []MiddlewareFunc{WrapLog},
+	*option
+}
+
+// NewClient 构建一个客户端
+func NewClient(network string, addr string, opts ...Option) (*Client, error) {
+
+	// 1.构建客户端对象
+	client := &Client{
 		option: &option{
 			codecType: codec.MsgPackCodecType,
 		},
@@ -56,6 +64,14 @@ func NewClient(network string, addr string, opts ...Option) (*Client, error) {
 
 	client.setCodec()
 
+	// 2.设置配置参数
+	for _, op := range opts {
+		op(client.option)
+	}
+	// 3.设置传入的编码格式
+	client.setCodec()
+
+	// 4.连接服务端
 	conn, err := net.Dial(network, addr)
 	if err != nil {
 		return nil, err
@@ -63,6 +79,10 @@ func NewClient(network string, addr string, opts ...Option) (*Client, error) {
 
 	client.Conn = conn
 
+	// 5.保存连接
+	client.Conn = conn
+
+	// 6.
 	go client.input()
 	return client, nil
 }
@@ -112,6 +132,10 @@ func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface
 	} else {
 		seq = ctx.Value(context.RequestSeqKey).(string)
 	}
+func (c *Client) Call(ctx *context.Context, serviceMethod string, args interface{}) (reply []byte, err error) {
+
+	seq := context.GetSequence()
+	ctx.WithValue(context.RequestSeqKey, seq)
 
 	canFn := func() {}
 	if c.option.RequestTimeout != time.Duration(0) {
@@ -166,6 +190,10 @@ func (c *Client) Close() error {
 
 func (c *Client) send(ctx *context.Context, call *Call) {
 	seq := ctx.Value(context.RequestSeqKey).(string)
+<<<<<<< HEAD
+=======
+
+>>>>>>> mqc接入
 	c.pendingCalls.Store(seq, call)
 	msg := context.GetMessage()
 	msg.Seq = seq
@@ -211,12 +239,16 @@ func (c *Client) input() {
 
 	for err == nil {
 
+		// 读取连接得到的数据
 		n, err = c.Conn.Read(buf)
 		if err != nil {
 			break
 		}
 
 		response := context.GetMessage()
+		// 获取响应报文结构
+		response := context.GetMessage()
+		// 将消息解析成message结构
 		err = c.Codec.Decode(buf[:n], response)
 		if err != nil {
 			break
@@ -225,6 +257,12 @@ func (c *Client) input() {
 		seq := response.Seq
 		callInterface, _ := c.pendingCalls.Load(seq)
 		call := callInterface.(*Call)
+		// 获取响应报文的请求序号
+		seq := response.Seq
+		// 不懂
+		callInterface, _ := c.pendingCalls.Load(seq)
+		call := callInterface.(*Call)
+		// 删除请求序号
 		c.pendingCalls.Delete(seq)
 		switch {
 		case call == nil:
@@ -233,6 +271,7 @@ func (c *Client) input() {
 			call.Error = errors.New(response.Error)
 			call.done()
 		default:
+			// 不懂
 			call.Reply = response.Data
 			call.done()
 		}

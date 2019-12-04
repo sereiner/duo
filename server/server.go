@@ -1,7 +1,7 @@
 package server
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -11,11 +11,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/sereiner/duo/codec"
 	_ "github.com/sereiner/duo/codec/gob"
 	_ "github.com/sereiner/duo/codec/msgpack"
 	"github.com/sereiner/duo/component"
-
-	"github.com/sereiner/duo/codec"
 	"github.com/sereiner/duo/context"
 )
 
@@ -23,15 +22,11 @@ var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
 var typeOfContext = reflect.TypeOf((*context.IContext)(nil)).Elem()
 
 type RPCServer interface {
-	Register(rcvr interface{})
+	Register(rcvr interface{}) error
 	Serve(network string, addr string) error
 	Close() error
 }
-
-type Server struct {
-	ln         net.Listener
 	codec      codec.Codec
-	serviceMap sync.Map
 	mutex      sync.Mutex
 	shutdown   bool
 	c          component.IContainer
@@ -52,14 +47,17 @@ type methodType struct {
 }
 
 func NewServer(c component.IContainer, opts ...Option) RPCServer {
+	// 构造一个rpc server对象
 	s := &Server{
 		c:      c,
 		option: &option{},
 	}
 
+	// 设置参数
 	for _, op := range opts {
 		op(s.option)
 	}
+	// 编码格式
 	s.codecType = codec.MsgPackCodecType
 
 	s.setCodec()
@@ -74,8 +72,8 @@ func (s *Server) setCodec() {
 	s.codec = code
 }
 
-func (s *Server) Register(rFunc interface{}) {
-
+func (s *Server) Register(rFunc interface{}) error {
+	// 反射服务参数
 	rFuncType := reflect.TypeOf(rFunc)
 	rFuncValue := reflect.ValueOf(rFunc)
 	if rFuncType.Kind() != reflect.Func {
@@ -83,6 +81,7 @@ func (s *Server) Register(rFunc interface{}) {
 	}
 
 	var rvalue []reflect.Value
+	// ？
 	if rFuncType.NumIn() == 1 {
 		if rFuncType.In(0).Name() != "IContainer" {
 			panic("注册函数参数类型错误")
@@ -115,14 +114,15 @@ func (s *Server) Register(rFunc interface{}) {
 		} else {
 			errorStr = "rpc.Register: type " + name + " has no exported methods of suitable type"
 		}
-
-		panic(errorStr)
+		log.Println(errorStr)
+		return errors.New(errorStr)
 	}
 
 	if _, duplicate := s.serviceMap.LoadOrStore(name, srv); duplicate {
-		panic("rpc: service already defined: " + name)
+		return errors.New("rpc: service already defined: " + name)
 	}
 
+	return nil
 }
 
 func suitableMethods(typ reflect.Type) map[string]*methodType {
@@ -296,65 +296,52 @@ func (s *Server) serveTransport(conn net.Conn) {
 		}
 
 		argv := newValue(mtype.ArgType)
-		ctx := context.GetContext()
-		ctx.SetSeq(requestMsg.Seq)
+		ctx := context.NewContext()
 
 		err = s.codec.Decode(requestMsg.Data, argv)
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		go s.call(conn, mtype, requestMsg, srv, ctx, argv)
 
-	}
-}
-func (s *Server) call(conn net.Conn, mtype *methodType, requestMsg *context.Message, srv *service, ctx *context.Context, argv interface{}) {
-
-	defer func() {
-		if err := recover(); err != nil {
-			s.writeErrorResponse(requestMsg, conn, fmt.Errorf("%v", err).Error())
+		var returns []reflect.Value
+		if mtype.ArgType.Kind() != reflect.Ptr {
+			returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
+				reflect.ValueOf(ctx),
+				reflect.ValueOf(argv).Elem(),
+			})
+		} else {
+			returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
+				reflect.ValueOf(ctx),
+				reflect.ValueOf(argv),
+			})
 		}
-	}()
 
-	var returns []reflect.Value
-	if mtype.ArgType.Kind() != reflect.Ptr {
-		returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
-			reflect.ValueOf(ctx),
-			reflect.ValueOf(argv).Elem(),
-		})
-	} else {
-		returns = mtype.method.Func.Call([]reflect.Value{srv.rcvr,
-			reflect.ValueOf(ctx),
-			reflect.ValueOf(argv),
-		})
+		if len(returns) != 2 || returns[1].Interface() != nil {
+			err = returns[1].Interface().(error)
+			s.writeErrorResponse(requestMsg, conn, err.Error())
+			return
+		}
+
+		reBt, err := s.codec.Encode(returns[0].Interface())
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		requestMsg.Data = reBt
+		res, err := s.codec.Encode(requestMsg)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		_, err = conn.Write(res)
+		if err != nil {
+			log.Println(err)
+			return
+		}
 	}
-
-	if len(returns) != 2 || returns[1].Interface() != nil {
-		err := returns[1].Interface().(error)
-		s.writeErrorResponse(requestMsg, conn, err.Error())
-		return
-	}
-
-	reBt, err := s.codec.Encode(returns[0].Interface())
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	requestMsg.Data = reBt
-	res, err := s.codec.Encode(requestMsg)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	_, err = conn.Write(res)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	ctx.Close()
 }
 
 func newValue(t reflect.Type) interface{} {

@@ -10,6 +10,8 @@ type Option func(*option)
 type option struct {
 	codecType      codec.CodecType
 	RequestTimeout time.Duration
+	codecType      codec.CodecType //编码格式
+	RequestTimeout time.Duration   //超时时间
 }
 
 func WithCodecType(c codec.CodecType) Option {

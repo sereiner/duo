@@ -15,6 +15,11 @@ var messagePool *sync.Pool
 
 func init() {
 	messagePool = &sync.Pool{
+
+var contextPool *sync.Pool
+
+func init() {
+	contextPool = &sync.Pool{
 		New: func() interface{} {
 			return New()
 		},
@@ -44,6 +49,7 @@ func New() *Message {
 
 func GetMessage() (m *Message) {
 	return messagePool.Get().(*Message)
+	return contextPool.Get().(*Message)
 }
 
 func (m *Message) String() string {
@@ -61,4 +67,5 @@ func (m *Message) Close() {
 	m.MetaData = nil
 
 	messagePool.Put(m)
+	contextPool.Put(m)
 }

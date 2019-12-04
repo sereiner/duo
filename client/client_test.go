@@ -19,6 +19,7 @@ func TestClient(t *testing.T) {
 	}
 	defer c.Close()
 
+	// 调用方法
 	reply, err := c.Call(context.NewContext(), "UserServer", &Request{Name: "jack"})
 	if err != nil {
 		t.Error(err)
@@ -26,7 +27,7 @@ func TestClient(t *testing.T) {
 	}
 
 	m := map[string]interface{}{}
-
+	// 解析返回值
 	c.codec.Decode(reply, &m)
 
 	t.Log(m)

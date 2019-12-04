@@ -6,6 +6,7 @@ import (
 	"time"
 
 	logger "github.com/sereiner/library/log"
+	"time"
 )
 
 const (
@@ -41,7 +42,12 @@ func init() {
 
 func newContext() *Context {
 	return &Context{
-		Log:     logger.New("ctx"),
+	Log:     logger.New("ctx"),
+	context.Context,
+}
+
+func NewContext() *Context {
+	return &Context{
 		Context: context.Background(),
 	}
 }
