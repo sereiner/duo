@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
 	"github.com/BurntSushi/toml"
 	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"

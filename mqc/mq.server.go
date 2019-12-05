@@ -19,7 +19,7 @@ type MqcServer struct {
 	address   string
 	timeout   int
 	channel   string
-	handler   Handler
+	request   *Request
 	ctx       *context.Context
 	nsqd      *NsqdServer
 	nsqlookup *NsqLookUpServer
@@ -32,7 +32,7 @@ func NewMqcServer(ctx *context.Context) (mqc *MqcServer) {
 		nsqd:      NewNsqd(),
 		nsqlookup: NewLookUp(),
 		nsqdadmin: NewAdmin(),
-		handler:   New(ctx * context.Context),
+		request:   New(ctx),
 	}
 }
 
@@ -83,4 +83,8 @@ func (mqc *MqcServer) Register(handle nsq.Handler) error {
 		return mqc.ctx.Err()
 	}
 	return nil
+}
+
+func (mqc *MqcServer) GetString() {
+
 }

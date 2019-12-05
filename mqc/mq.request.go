@@ -6,21 +6,21 @@ import (
 	"github.com/sereiner/duo/context"
 )
 
-type Handler struct {
+type Request struct {
 	ctx *context.Context
 }
 
-func New(ctx *context.Context) *Handler {
-	return &Handler{
+func New(ctx *context.Context) *Request {
+	return &Request{
 		ctx: ctx,
 	}
 }
 
-func (h *Handler) HandleMessage(msg *nsq.Message) error {
+func (h *Request) HandleMessage(msg *nsq.Message) error {
 	// 还在想怎么存入消息
 	return nil
 }
 
-func (h *Handler) GetMsg() (string, error) {
+func (h *Request) GetMsg() (string, error) {
 	return "", nil
 }
