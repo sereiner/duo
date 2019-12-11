@@ -13,3 +13,5 @@ require (
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	google.golang.org/appengine v1.4.0 // indirect
 )
+
+replace github.com/sereiner/library => ../../github.com/sereiner/library
