@@ -190,10 +190,6 @@ func (c *Client) Close() error {
 
 func (c *Client) send(ctx *context.Context, call *Call) {
 	seq := ctx.Value(context.RequestSeqKey).(string)
-<<<<<<< HEAD
-=======
-
->>>>>>> mqc接入
 	c.pendingCalls.Store(seq, call)
 	msg := context.GetMessage()
 	msg.Seq = seq

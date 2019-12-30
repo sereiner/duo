@@ -1,80 +1,52 @@
 package nsqServer
 
 import (
-	"fmt"
-	"time"
-
-	go_nsq "github.com/nsqio/go-nsq"
-
+	"github.com/sereiner/duo/component/mqc"
 	"github.com/sereiner/library/concurrent/cmap"
-	"github.com/sereiner/duo/context"
 )
 
-type NsqClient struct {
-	ctx *context.Context
+type NsqConsumer struct {
 	address   string
 	consumers cmap.ConcurrentMap
-	closeCh  chan struct{}
+	closeCh   chan struct{}
+	*mqc.OptionConf
 }
 
-type nsqComsumer struct {
-	comsumer go_nsq.Consumer
-	msgQueue chan *go_nsq.Message
-	closeCh  chan struct{}
-}
-
-//处理消息
-func (n *nsqComsumer) HandleMessage(msg *go_nsq.Message) error {
-	fmt.Println("receive: ", msg.NSQDAddress, "message: ", string(msg.Body))
-	n.msgQueue <- msg
-	return nil
-}
-
-func NewNsqClient(ctx *context.Context,address string) (client *NsqClient,err error) {
-	client := &NsqClient{ctx: ctx,address: address}
-	client.closeCh = make(chan struct{})
-	client.consumers = cmap.New(2)
-	return 
-}
-
-
-// 如何与外界服务串联起来
-func Init(ctx *context.Context, topic, channel, address string, intervale int) error {
-	// c := NewConsumerT(ctx)
-	cfg := go_nsq.NewConfig()
-	if intervale == 0 {
-		intervale = 15
+func NewNsqConsumer(address string, opts ...mqc.Option) (consumer *NsqConsumer, err error) {
+	consumer = &NsqConsumer{
+		address:   address,
+		closeCh:   make(chan struct{}),
+		consumers: cmap.New(2),
 	}
-	cfg.LookupdPollInterval = time.Duration(intervale) * time.Second
-	client, err := go_nsq.NewConsumer(topic, channel, cfg)
-	if err != nil {
-		panic(err)
+	for _, o := range opts {
+		o(consumer.OptionConf)
 	}
-	//屏蔽系统日志
-	client.SetLogger(nil, 0)
-	// 添加消费者接口
-	client.AddHandler(c)
-
-	//建立NSQLookupd连接
-	if err := client.ConnectToNSQLookupd(address); err != nil {
-		return fmt.Errorf("连接nsq失败,err:", err)
-	}
-	ctx.Log.Infof("连接成功")
-	return nil
+	return
 }
 
-func (n *NsqClient) Consume() (err error)  {
-	
+func (n *NsqConsumer) Connect() (err error) {
+	return
 }
 
-func (n *NsqClient) ShutDown()  {
-	close(closeCh)
-	n.consumers.IterCb(func(key string, value interface{}) bool {
-		c := value.(*nsqConsumer)
-		c.consumer.Stop()
-		time.Sleep(time.Second)
-		c.closeCh <- struct{}{}
-		close(c.msgQueue)
-		return true
-	})
+func (n *NsqConsumer) Consume(queue string, concurrency int, callback func(mqc.IMessage)) (err error) {
+	return
+}
+
+func (n *NsqConsumer) UnConsume(queue string) {
+
+}
+
+func (n *NsqConsumer) Close() (err error) {
+	return
+}
+
+type nsqConsumerAdapter struct {
+}
+
+func (adapter *nsqConsumerAdapter) Resolve(address string, opts ...mqc.Option) (mqc.MQConsumer, error) {
+	return NewNsqConsumer(address, opts...)
+}
+
+func init() {
+	mqc.RegisteMqcConsumerAdapter("nsq", &nsqConsumerAdapter{})
 }

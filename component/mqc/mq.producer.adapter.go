@@ -2,7 +2,6 @@ package mqc
 
 import (
 	"fmt"
-	"strings"
 )
 
 var mqcProducerAdapters map[string]MqcProducerAdapter
@@ -13,29 +12,13 @@ type MqcProducerAdapter interface {
 }
 
 // 注册各mqc服务端适配器
-func RegistMqcProducerResolver(proto string, resolver MqcProducerAdapter) error {
-	if resolver == nil {
-		return fmt.Errorf("适配器为空")
+func RegistMqcProducerAdapter(proto string, adapter MqcProducerAdapter) error {
+	if adapter == nil {
+		return fmt.Errorf("注入的生产者适配器为空,adapter:%v", adapter)
 	}
 	if _, ok := mqcProducerAdapters[proto]; ok {
-		return fmt.Errorf("该适配器已存在")
+		return fmt.Errorf("该生产者适配器已被注入,proto:%s,adapter:%v", proto, adapter)
 	}
-	mqcProducerAdapters[proto] = resolver
+	mqcProducerAdapters[proto] = adapter
 	return nil
-}
-
-// 获取mq名称
-func GetMqName(address string) (proto string, raddr []string, err error) {
-	addrs := strings.Split(address, "://")
-	if len(addrs) == 0 || len(addrs) > 2 {
-		err = fmt.Errorf("MQ地址配置错误%s，格式:stomp://192.168.0.1:61613", addrs)
-	}
-	if len(addrs[0]) == 0 {
-		err = fmt.Errorf("MQ地址配置错误%s，格式:stomp://192.168.0.1:61613", addrs)
-	}
-	proto = addrs[0]
-	if len(raddr) > 1 {
-		raddr = strings.Split(addrs[1], ",")
-	}
-	return
 }
