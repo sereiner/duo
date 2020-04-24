@@ -1,4 +1,4 @@
-package nsqServer
+package nsq
 
 import (
 	"github.com/nsqio/go-nsq"
@@ -10,13 +10,12 @@ import (
 type NsqProducer struct {
 	address string
 	client  *nsq.Producer
-	message chan *mqc.ProcuderMessage
-	closeCh chan struct{} //怎么用
+	closeCh chan struct{} //阻塞时用
 	done    bool
 	*mqc.OptionConf
 }
 
-func NewNsqProducer(address string, opts ...mqc.Option) (producer *NsqProducer, err error) {
+func newNsqProducer(address string, opts ...mqc.Option) (producer *NsqProducer, err error) {
 	producer = &NsqProducer{address: address,
 		closeCh: make(chan struct{}),
 	}
@@ -39,6 +38,7 @@ func (n *NsqProducer) Connect() (err error) {
 	return n.client.Ping()
 }
 
+//发布消息
 func (n *NsqProducer) Publish(queue string, msg string, timeout time.Duration) (err error) {
 	if n.done {
 		n.OptionConf.Logger.Errorf("连接已关闭")
@@ -51,6 +51,7 @@ func (n *NsqProducer) Publish(queue string, msg string, timeout time.Duration) (
 	return n.client.Publish(queue, []byte(msg))
 }
 
+//关闭服务
 func (n *NsqProducer) ShutDown() (err error) {
 	if n.done {
 		n.OptionConf.Logger.Errorf("队列已关闭")
@@ -62,17 +63,13 @@ func (n *NsqProducer) ShutDown() (err error) {
 	return
 }
 
-func (n *NsqProducer) GetMessage() chan *mqc.ProcuderMessage {
-	return n.message
-}
-
 //nsq 适配器
 type nsqProducerAdapter struct {
 }
 
 // nsq适配器构建nsqproducer
 func (adapter *nsqProducerAdapter) Resolve(address string, opts ...mqc.Option) (mqc.MQProducer, error) {
-	return NewNsqProducer(address, opts...)
+	return newNsqProducer(address, opts...)
 }
 
 func init() {

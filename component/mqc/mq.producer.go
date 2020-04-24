@@ -2,14 +2,13 @@ package mqc
 
 import (
 	"fmt"
-	"github.com/sereiner/duo/component/mqc/util"
+	"github.com/sereiner/duo/component/mqc/conf"
 	"sync/atomic"
 	"time"
 )
 
 type MQProducer interface {
 	Connect() (err error)
-	GetMessage() chan *ProcuderMessage
 	Publish(queue string, msg string, timeout time.Duration) (err error)
 	ShutDown() (err error)
 }
@@ -17,7 +16,7 @@ type MQProducer interface {
 // 获取消息对象
 func GetProducer(address string, opts ...Option) (mq MQProducer, err error) {
 	// 获取消息中间件适配器
-	mqType, addrs, err := util.GetMqName(address)
+	mqType, addrs, err := conf.GetMqName(address)
 	if err != nil {
 		return
 	}
